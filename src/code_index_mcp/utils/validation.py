@@ -44,13 +44,16 @@ class ValidationHelper:
         if not base_path:
             return "Base path not set"
 
+        # Strip leading slash if present (common mistake in resource URIs)
+        cleaned_path = file_path.lstrip('/')
+
         # Handle absolute paths (especially Windows paths starting with drive letters)
-        if os.path.isabs(file_path) or (len(file_path) > 1 and file_path[1] == ':'):
+        if os.path.isabs(cleaned_path) or (len(cleaned_path) > 1 and cleaned_path[1] == ':'):
             return (f"Absolute file paths like '{file_path}' are not allowed. "
                     "Please use paths relative to the project root.")
 
-        # Normalize the file path
-        norm_path = os.path.normpath(file_path)
+        # Normalize the file path (handles backslashes, extra slashes, ./ etc.)
+        norm_path = os.path.normpath(cleaned_path)
 
         # Check for path traversal attempts
         if "..\\" in norm_path or "../" in norm_path or norm_path.startswith(".."):
@@ -65,6 +68,36 @@ class ValidationHelper:
             return "Access denied. File path must be within project directory."
 
         return None
+
+    @staticmethod
+    def normalize_file_path(file_path: str) -> str:
+        """
+        Normalize a file path for consistent handling.
+
+        This method:
+        - Strips leading slashes
+        - Converts backslashes to forward slashes
+        - Normalizes path separators and ./ references
+
+        Args:
+            file_path: The file path to normalize
+
+        Returns:
+            Normalized file path with forward slashes
+        """
+        if not file_path:
+            return file_path
+
+        # Strip leading slash if present
+        cleaned_path = file_path.lstrip('/')
+
+        # Convert backslashes to forward slashes (for cross-platform compatibility)
+        # This is needed because on Linux, backslashes are valid filename characters
+        # but users might provide Windows-style paths
+        cleaned_path = cleaned_path.replace('\\', '/')
+
+        # Normalize the path (handles ./, //, etc.)
+        return os.path.normpath(cleaned_path)
 
     @staticmethod
     def validate_directory_path(dir_path: str) -> Optional[str]:
