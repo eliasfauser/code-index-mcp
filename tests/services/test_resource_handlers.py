@@ -300,3 +300,190 @@ class TestResourceIntegration:
         
         content = service.get_file_content(".gitignore")
         assert "*.pyc" in content
+
+
+class TestResourceListing:
+    """Test MCP resource listing functionality."""
+    
+    def test_list_resources_returns_config_resource(self):
+        """Test that list_resources returns the config resource."""
+        import asyncio
+        from code_index_mcp.server import mcp
+        
+        # Get list of resources
+        resources = asyncio.run(mcp.list_resources())
+        
+        # Should have at least the config resource
+        assert len(resources) > 0
+        
+        # Find config resource (uri is a pydantic AnyUrl object)
+        config_resources = [r for r in resources if str(r.uri) == "config://code-indexer"]
+        assert len(config_resources) == 1
+        
+        config_resource = config_resources[0]
+        assert str(config_resource.uri) == "config://code-indexer"
+        assert config_resource.name is not None or config_resource.uri is not None
+    
+    def test_list_resource_templates_returns_files_template(self):
+        """Test that list_resource_templates returns the files template."""
+        import asyncio
+        from code_index_mcp.server import mcp
+        
+        # Get list of resource templates
+        templates = asyncio.run(mcp.list_resource_templates())
+        
+        # Should have the files template
+        assert len(templates) > 0
+        
+        # Find files template
+        files_templates = [t for t in templates if "files://" in t.uriTemplate]
+        assert len(files_templates) == 1
+        
+        files_template = files_templates[0]
+        assert files_template.uriTemplate == "files://{file_path}"
+        assert files_template.name is not None or files_template.uriTemplate is not None
+    
+    def test_resources_are_discoverable(self):
+        """Test that both static and template resources are discoverable."""
+        import asyncio
+        from code_index_mcp.server import mcp
+        
+        # Get both lists
+        resources = asyncio.run(mcp.list_resources())
+        templates = asyncio.run(mcp.list_resource_templates())
+        
+        # Should have at least one of each
+        assert len(resources) >= 1, "Should have at least the config resource"
+        assert len(templates) >= 1, "Should have at least the files template"
+        
+        # Collect all URIs/templates (convert AnyUrl to string)
+        resource_uris = {str(r.uri) for r in resources}
+        template_uris = {t.uriTemplate for t in templates}
+        
+        # Verify expected resources
+        assert "config://code-indexer" in resource_uris
+        assert "files://{file_path}" in template_uris
+    
+    def test_config_resource_has_metadata(self):
+        """Test that config resource has proper metadata."""
+        import asyncio
+        from code_index_mcp.server import mcp
+        
+        resources = asyncio.run(mcp.list_resources())
+        config_resources = [r for r in resources if str(r.uri) == "config://code-indexer"]
+        
+        assert len(config_resources) == 1
+        config_resource = config_resources[0]
+        
+        # Check that it has some identifying information
+        assert str(config_resource.uri) == "config://code-indexer"
+        # At minimum, should have uri
+        assert hasattr(config_resource, 'uri')
+    
+    def test_files_template_has_metadata(self):
+        """Test that files template resource has proper metadata."""
+        import asyncio
+        from code_index_mcp.server import mcp
+        
+        templates = asyncio.run(mcp.list_resource_templates())
+        files_templates = [t for t in templates if "files://" in t.uriTemplate]
+        
+        assert len(files_templates) == 1
+        files_template = files_templates[0]
+        
+        # Check that it has proper template structure
+        assert files_template.uriTemplate == "files://{file_path}"
+        assert hasattr(files_template, 'uriTemplate')
+        
+        # Check if it has description or name (optional but good practice)
+        # Note: These might be None if not set in the decorator
+        assert files_template.uriTemplate is not None
+    
+    def test_read_resource_via_mcp_with_workspace_files(self):
+        """Test reading actual files from the workspace through MCP resources."""
+        import tempfile
+        import os
+        from types import SimpleNamespace
+        from code_index_mcp.services.file_service import FileService
+        from code_index_mcp.project_settings import ProjectSettings
+        
+        # Create a temporary workspace with test files
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Create test files
+            readme_path = os.path.join(temp_dir, "README.md")
+            readme_content = "# Test Project\nThis is a test readme for MCP resources."
+            with open(readme_path, 'w') as f:
+                f.write(readme_content)
+            
+            src_dir = os.path.join(temp_dir, "src")
+            os.makedirs(src_dir)
+            main_path = os.path.join(src_dir, "main.py")
+            main_content = "def main():\n    print('Hello from MCP!')\n"
+            with open(main_path, 'w') as f:
+                f.write(main_content)
+            
+            nested_dir = os.path.join(src_dir, "utils")
+            os.makedirs(nested_dir)
+            helper_path = os.path.join(nested_dir, "helper.py")
+            helper_content = "# Helper utilities\ndef helper():\n    return 'help'\n"
+            with open(helper_path, 'w') as f:
+                f.write(helper_content)
+            
+            # Create context with the temp directory
+            settings = ProjectSettings(temp_dir, skip_load=True)
+            ctx = SimpleNamespace(
+                request_context=SimpleNamespace(
+                    lifespan_context=SimpleNamespace(
+                        base_path=temp_dir,
+                        settings=settings,
+                        file_count=0,
+                        index_manager=None
+                    )
+                )
+            )
+            
+            # Create FileService with this context
+            service = FileService(ctx)
+            
+            # Test reading README.md
+            content = service.get_file_content("README.md")
+            assert content == readme_content
+            
+            # Test reading nested file
+            content = service.get_file_content("src/main.py")
+            assert content == main_content
+            
+            # Test reading deeply nested file
+            content = service.get_file_content("src/utils/helper.py")
+            assert content == helper_content
+            
+            # Test with different path formats
+            content = service.get_file_content("./README.md")
+            assert content == readme_content
+            
+            # Test with leading slash (should be stripped)
+            content = service.get_file_content("/README.md")
+            assert content == readme_content
+            
+            # Test with backslashes (Windows-style)
+            content = service.get_file_content("src\\main.py")
+            assert content == main_content
+            
+            # Test with mixed separators
+            content = service.get_file_content("src/utils\\helper.py")
+            assert content == helper_content
+    
+    def test_config_resource_readable(self):
+        """Test that config resource can be listed and has correct URI format."""
+        import asyncio
+        from code_index_mcp.server import mcp
+        
+        resources = asyncio.run(mcp.list_resources())
+        config_resources = [r for r in resources if str(r.uri) == "config://code-indexer"]
+        
+        assert len(config_resources) == 1
+        
+        # Verify URI scheme is correct
+        uri_str = str(config_resources[0].uri)
+        assert uri_str.startswith("config://")
+        assert "code-indexer" in uri_str
