@@ -11,6 +11,7 @@ Usage:
 import os
 from .base_service import BaseService
 
+from ..utils.validation import ValidationHelper
 
 class FileService(BaseService):
     """
@@ -37,8 +38,11 @@ class FileService(BaseService):
         self._require_project_setup()
         self._require_valid_file_path(file_path)
 
+        # Normalize the path (handles backslashes, leading slashes, etc.)
+        normalized_path = ValidationHelper.normalize_file_path(file_path)
+
         # Build full path
-        full_path = os.path.join(self.base_path, file_path)
+        full_path = os.path.join(self.base_path, normalized_path)
 
         try:
             # Try UTF-8 first (most common)
