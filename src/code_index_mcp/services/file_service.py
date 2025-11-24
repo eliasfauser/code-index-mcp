@@ -8,10 +8,13 @@ Usage:
 - get_file_content() - used by files://{file_path} resource
 """
 
+import logging
 import os
 from .base_service import BaseService
 
 from ..utils.validation import ValidationHelper
+
+logger = logging.getLogger(__name__)
 
 class FileService(BaseService):
     """
@@ -44,6 +47,8 @@ class FileService(BaseService):
         # Build full path
         full_path = os.path.join(self.base_path, normalized_path)
 
+        logger.info("Reading file content from: %s", full_path)
+        
         try:
             # Try UTF-8 first (most common)
             with open(full_path, 'r', encoding='utf-8') as f:

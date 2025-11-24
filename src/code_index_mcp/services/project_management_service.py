@@ -77,6 +77,8 @@ class ProjectManagementService(BaseService):
         # Business workflow: Execute initialization
         result = self._execute_initialization_workflow(path)
 
+        logger.info("Initialized project path to: %s", path)
+        
         # Business result formatting
         return self._format_initialization_result(result)
 

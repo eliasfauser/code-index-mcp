@@ -47,7 +47,7 @@ def setup_indexing_performance_logging():
     # stderr for errors only
     stderr_handler = logging.StreamHandler(sys.stderr)
     stderr_handler.setFormatter(formatter)
-    stderr_handler.setLevel(logging.ERROR)
+    stderr_handler.setLevel(logging.INFO)
 
     root_logger.addHandler(stderr_handler)
     root_logger.setLevel(logging.DEBUG)
@@ -140,6 +140,9 @@ def get_config() -> str:
 def get_file_content(file_path: str) -> str:
     """Get the content of a specific file."""
     ctx = mcp.get_context()
+
+    logger.info("Fetching content for file: %s", file_path)
+    
     # Use FileService for simple file reading - this is appropriate for a resource
     return FileService(ctx).get_file_content(file_path)
 
@@ -153,6 +156,7 @@ def get_file_content(file_path: str) -> str:
 @handle_mcp_tool_errors(return_type='str')
 def set_project_path(path: str, ctx: Context) -> str:
     """Set the base project path for indexing."""
+
     return ProjectManagementService(ctx).initialize_project(path)
 
 @mcp.tool()
