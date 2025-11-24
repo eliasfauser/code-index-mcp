@@ -345,7 +345,7 @@ class DebounceEventHandler(FileSystemEventHandler):
         should_process = self.should_process_event(event)
 
         if should_process:
-            self.logger.info("File changed: %s - %s", event.event_type, event.src_path)
+            self.logger.debug("File changed: %s - %s", event.event_type, event.src_path)
             self.reset_debounce_timer()
         else:
             # Only log at debug level for filtered events
