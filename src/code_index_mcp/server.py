@@ -136,11 +136,12 @@ def get_config() -> str:
     return ProjectManagementService(ctx).get_project_config()
 
 @mcp.resource("file://{file_path}")
-@handle_mcp_resource_errors
-def get_file_content(ctx: Context, file_path: str) -> str:
+# @handle_mcp_resource_errors
+def get_file_content(file_path: str) -> str:
     """Get the content of a specific file."""
-    logger.info("Fetching content for file: %s", file_path)
+    ctx = mcp.get_context()
 
+    logger.info("Fetching content for file: %s", file_path)
     
     # Use FileService for simple file reading - this is appropriate for a resource
     return FileService(ctx).get_file_content(file_path)
