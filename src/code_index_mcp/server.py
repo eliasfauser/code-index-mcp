@@ -47,7 +47,7 @@ def setup_indexing_performance_logging():
     # stderr for errors only
     stderr_handler = logging.StreamHandler(sys.stderr)
     stderr_handler.setFormatter(formatter)
-    stderr_handler.setLevel(logging.INFO)
+    stderr_handler.setLevel(logging.DEBUG)
 
     root_logger.addHandler(stderr_handler)
     root_logger.setLevel(logging.DEBUG)
