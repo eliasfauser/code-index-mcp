@@ -19,20 +19,20 @@ def test_resource_template_supports_multi_segment_paths():
     # Should have the files resource template
     assert len(templates) > 0, "Should have at least one resource template"
     
-    # Find files resource template
-    files_templates = {uri: tmpl for uri, tmpl in templates.items() if 'files://' in uri}
-    assert len(files_templates) == 1, "Should have exactly one files resource template"
+    # Find file resource template
+    file_templates = {uri: tmpl for uri, tmpl in templates.items() if 'file://' in uri}
+    assert len(file_templates) == 1, "Should have exactly one file resource template"
     
-    # Get the files template
-    uri_template, template = next(iter(files_templates.items()))
+    # Get the file template
+    uri_template, template = next(iter(file_templates.items()))
     
     # Assert it uses multi-segment parameter syntax
     assert '{file_path*}' in uri_template, \
-        f"Files resource should use multi-segment parameter {{file_path*}}, got: {uri_template}"
+        f"File resource should use multi-segment parameter {{file_path*}}, got: {uri_template}"
     
     # Verify it's not using single-segment
-    assert uri_template != 'files://{file_path}', \
-        "Files resource should not use single-segment parameter"
+    assert uri_template != 'file://{file_path}', \
+        "File resource should not use single-segment parameter"
     
     # Verify the template properties
     assert template.name == 'get_file_content', \
@@ -48,13 +48,13 @@ def test_multi_segment_resource_examples():
     
     templates = asyncio.run(mcp._resource_manager.get_resource_templates())
     
-    # Get files template URI
-    files_uri = next((uri for uri in templates.keys() if 'files://' in uri), None)
-    assert files_uri is not None, "Files resource template should exist"
+    # Get file template URI
+    file_uri = next((uri for uri in templates.keys() if 'file://' in uri), None)
+    assert file_uri is not None, "File resource template should exist"
     
     # Verify the URI template format
-    assert files_uri == 'files://{file_path*}', \
-        f"Expected 'files://{{file_path*}}', got: {files_uri}"
+    assert file_uri == 'file://{file_path*}', \
+        f"Expected 'file://{{file_path*}}', got: {file_uri}"
     
     # Document expected usage patterns
     expected_paths = [
