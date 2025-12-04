@@ -93,6 +93,40 @@ def parse_search_output(
     return results
 
 
+def convert_glob_to_regex(pattern: str) -> str:
+    """
+    Convert a glob-like pattern to a regex pattern.
+    
+    Supports:
+    - * as wildcard for any characters (converted to .*)
+    - ? as single character wildcard (converted to .)
+    - Literal text otherwise
+    
+    Args:
+        pattern: Glob pattern like "*permission*" or "test?"
+        
+    Returns:
+        Regex pattern like ".*permission.*" or "test."
+    """
+    # Check if pattern contains glob wildcards
+    if '*' not in pattern and '?' not in pattern:
+        return pattern
+    
+    # Escape all regex special characters except * and ?
+    # First, replace * and ? with placeholders
+    pattern = pattern.replace('*', '\x00STAR\x00')
+    pattern = pattern.replace('?', '\x00QUESTION\x00')
+    
+    # Escape all regex special characters
+    pattern = re.escape(pattern)
+    
+    # Replace placeholders with regex equivalents
+    pattern = pattern.replace('\x00STAR\x00', '.*')
+    pattern = pattern.replace('\x00QUESTION\x00', '.')
+    
+    return pattern
+
+
 def create_word_boundary_pattern(pattern: str) -> str:
     """
     Create word boundary patterns for partial matching.

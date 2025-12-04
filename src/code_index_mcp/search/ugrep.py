@@ -5,7 +5,7 @@ import shutil
 import subprocess
 from typing import Dict, List, Optional, Tuple
 
-from .base import SearchStrategy, parse_search_output, create_word_boundary_pattern, is_safe_regex_pattern
+from .base import SearchStrategy, parse_search_output, create_word_boundary_pattern, is_safe_regex_pattern, convert_glob_to_regex
 
 class UgrepStrategy(SearchStrategy):
     """Search strategy using the 'ugrep' (ug) command-line tool."""
@@ -54,6 +54,10 @@ class UgrepStrategy(SearchStrategy):
             if not is_safe_regex_pattern(pattern):
                 raise ValueError(f"Potentially unsafe regex pattern: {pattern}")
             # Don't add --fixed-strings, use regex mode
+        elif '*' in pattern or '?' in pattern:
+            # Convert glob pattern to regex
+            pattern = convert_glob_to_regex(pattern)
+            # Don't use --fixed-strings since we have a regex pattern now
         else:
             # Use literal string search
             cmd.append('--fixed-strings')

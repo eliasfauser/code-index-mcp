@@ -166,7 +166,7 @@ def set_project_path(path: str, ctx: Context) -> str:
 def search_code_advanced(
     pattern: str,
     ctx: Context,
-    case_sensitive: bool = True,
+    case_sensitive: bool = False,
     context_lines: int = 0,
     file_pattern: str = None,
     fuzzy: bool = False,
@@ -180,39 +180,60 @@ def search_code_advanced(
     This tool automatically selects the best available command-line search tool
     (like ugrep, ripgrep, ag, or grep) for maximum performance.
 
+    IMPORTANT PATTERN FEATURES:
+    - Glob Wildcards: Use * and ? in patterns for flexible matching
+      * matches any characters: "*permission*" finds "HasPermission", "permissionCache", etc.
+      ? matches single character: "te?t" finds "test", "text"
+    - Case Insensitive by Default: case_sensitive defaults to False for easier searching
+    - Auto Regex Detection: Patterns with regex chars like | or [] are treated as regex
+
     Args:
-        pattern: The search pattern. Can be literal text or regex (see regex parameter).
-        case_sensitive: Whether the search should be case-sensitive.
-        context_lines: Number of lines to show before and after the match.
-        file_pattern: A glob pattern to filter files to search in
-                     (e.g., "*.py", "*.js", "test_*.py").
-                     All search tools now handle glob patterns consistently:
-                     - ugrep: Uses glob patterns (*.py, *.{js,ts})
-                     - ripgrep: Uses glob patterns (*.py, *.{js,ts})
-                     - ag (Silver Searcher): Automatically converts globs to regex patterns
-                     - grep: Basic glob pattern matching
-                     All common glob patterns like "*.py", "test_*.js", "src/*.ts" are supported.
-        fuzzy: If True, enables fuzzy/partial matching behavior varies by search tool:
-               - ugrep: Native fuzzy search with --fuzzy flag (true edit-distance fuzzy search)
-               - ripgrep, ag, grep, basic: Word boundary pattern matching (not true fuzzy search)
-               IMPORTANT: Only ugrep provides true fuzzy search. Other tools use word boundary
-               matching which allows partial matches at word boundaries.
-               For exact literal matches, set fuzzy=False (default and recommended).
-        regex: Controls regex pattern matching behavior:
-               - If True, enables regex pattern matching
-               - If False, forces literal string search
-               - If None (default), automatically detects regex patterns and enables regex for patterns like "ERROR|WARN"
-               The pattern will always be validated for safety to prevent ReDoS attacks.
-        start_index: Zero-based offset into the flattened match list. Use to fetch subsequent pages.
-        max_results: Maximum number of matches to return (default 10). Pass None to retrieve all matches.
+        pattern: The search pattern with powerful matching options:
+                 - Glob patterns: "*permission*" (finds any line with "permission")
+                 - Simple text: "permission" (exact substring match)
+                 - Regex patterns: "func.*Permission" (when regex=True or auto-detected)
+                 Examples:
+                 - "*error*" → finds "Error", "handleError", "error_code"
+                 - "test?" → finds "test1", "testA"
+                 - "ERROR|WARN" → regex pattern (auto-detected)
+        
+        case_sensitive: Whether the search should be case-sensitive (default: False).
+                       False means "Permission", "permission", "PERMISSION" all match.
+        
+        context_lines: Number of lines to show before and after each match (default: 0).
+        
+        file_pattern: Glob pattern to filter which files to search in (applied to filenames):
+                     Examples: "*.py", "*.go", "test_*.js", "*.{ts,tsx}"
+                     All search tools handle these glob patterns automatically.
+        
+        fuzzy: Enable fuzzy/partial matching (default: False, use with caution):
+               - True: Enables word boundary matching for partial matches
+               - False (recommended): Exact substring matching (or glob if pattern has *)
+               Note: Only ugrep provides true fuzzy search. For most cases, use glob patterns like
+               "*permission*" instead of enabling fuzzy mode.
+        
+        regex: Control regex pattern matching:
+               - None (default): Auto-detects regex patterns like "ERROR|WARN"
+               - True: Force regex mode for patterns like "func.*\("
+               - False: Force literal/glob search (wildcards * and ? still work)
+               Safety: All regex patterns are validated to prevent ReDoS attacks.
+        
+        start_index: Zero-based offset for pagination (default: 0).
+        
+        max_results: Maximum results to return (default: 10, use None for all results).
 
     Returns:
         A dictionary containing:
-        - results: List of matches with file, line, and text keys.
-        - pagination: Metadata with total_matches, returned, start_index, end_index, has_more,
-                      and optionally max_results.
-        If an error occurs, an error message is returned instead.
-
+        - matches: List of matches with file, line, and text keys.
+        - pagination: Metadata with total_matches, returned, start_index, end_index, has_more.
+        
+    Examples:
+        - Find all permission-related code in Go files:
+          pattern="*permission*", file_pattern="*.go", case_sensitive=False
+        - Find function definitions:
+          pattern="func.*\(", file_pattern="*.go", regex=True
+        - Find error handling:
+          pattern="*error*", case_sensitive=False
     """
     return SearchService(ctx).search_code(
         pattern=pattern,

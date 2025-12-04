@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from .base import SearchStrategy, create_word_boundary_pattern, is_safe_regex_pattern
+from .base import SearchStrategy, create_word_boundary_pattern, is_safe_regex_pattern, convert_glob_to_regex
 
 class BasicSearchStrategy(SearchStrategy):
     """
@@ -77,8 +77,14 @@ class BasicSearchStrategy(SearchStrategy):
                 search_pattern = create_word_boundary_pattern(pattern)
                 search_regex = re.compile(search_pattern, flags)
             else:
-                # Use literal string search
-                search_regex = re.compile(re.escape(pattern), flags)
+                # Check if pattern contains glob wildcards (* or ?)
+                if '*' in pattern or '?' in pattern:
+                    # Convert glob pattern to regex
+                    regex_pattern = convert_glob_to_regex(pattern)
+                    search_regex = re.compile(regex_pattern, flags)
+                else:
+                    # Use literal string search
+                    search_regex = re.compile(re.escape(pattern), flags)
         except re.error as e:
             raise ValueError(f"Invalid regex pattern: {pattern}, error: {e}")
 

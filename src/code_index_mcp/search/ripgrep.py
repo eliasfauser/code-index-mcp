@@ -5,7 +5,7 @@ import shutil
 import subprocess
 from typing import Dict, List, Optional, Tuple
 
-from .base import SearchStrategy, parse_search_output, create_word_boundary_pattern, is_safe_regex_pattern
+from .base import SearchStrategy, parse_search_output, create_word_boundary_pattern, is_safe_regex_pattern, convert_glob_to_regex
 
 class RipgrepStrategy(SearchStrategy):
     """Search strategy using the 'ripgrep' (rg) command-line tool."""
@@ -57,6 +57,10 @@ class RipgrepStrategy(SearchStrategy):
         elif fuzzy:
             # Use word boundary pattern for partial matching
             search_pattern = create_word_boundary_pattern(pattern)
+        elif '*' in pattern or '?' in pattern:
+            # Convert glob pattern to regex
+            search_pattern = convert_glob_to_regex(pattern)
+            # Don't use --fixed-strings since we have a regex pattern now
         else:
             # Use literal string search
             cmd.append('--fixed-strings')
