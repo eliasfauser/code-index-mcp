@@ -14,7 +14,7 @@ authors = [
     {name = "johnhuang316"}
 ]
 dependencies = [
-    "fastmcp>2.2.4",
+    "fastmcp==2.13.0.2",
     "watchdog>=3.0.0",
     "tree-sitter>=0.20.0",
     "tree-sitter-javascript>=0.20.0",
