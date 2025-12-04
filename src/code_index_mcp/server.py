@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from typing import AsyncIterator, Dict, Any, List, Optional
 
 # Third-party imports
-from mcp.server.fastmcp import FastMCP, Context
+from fastmcp import FastMCP, Context
 
 # Local imports
 from .project_settings import ProjectSettings
@@ -71,15 +71,6 @@ class _CLIConfig:
     project_path: str | None = None
 
 
-class _BootstrapRequestContext:
-    """Minimal request context to reuse business services during bootstrap."""
-
-    def __init__(self, lifespan_context: CodeIndexerContext):
-        self.lifespan_context = lifespan_context
-        self.session = None
-        self.meta = None
-
-
 _CLI_CONFIG = _CLIConfig()
 
 @asynccontextmanager
@@ -101,15 +92,30 @@ async def indexer_lifespan(_server: FastMCP) -> AsyncIterator[CodeIndexerContext
     try:
         # Bootstrap project path when provided via CLI.
         if _CLI_CONFIG.project_path:
-            bootstrap_ctx = Context(
-                request_context=_BootstrapRequestContext(context),
-                fastmcp=mcp
-            )
+            # Initialize project directly without using Context/Services
+            # since we're in lifespan and not in a request context
+            from .indexing import get_shallow_index_manager
+            
+            project_path = _CLI_CONFIG.project_path
             try:
-                message = ProjectManagementService(bootstrap_ctx).initialize_project(
-                    _CLI_CONFIG.project_path
-                )
-                logger.info("Project initialized from CLI flag: %s", message)
+                # Initialize settings with the project path
+                settings = ProjectSettings(project_path, skip_load=False)
+                context.base_path = project_path
+                context.settings = settings
+                
+                # Build shallow index
+                shallow_manager = get_shallow_index_manager()
+                if shallow_manager.set_project_path(project_path):
+                    shallow_manager.build_index()
+                    context.file_count = len(shallow_manager.get_file_list())
+                else:
+                    raise RuntimeError("Failed to set project path for shallow index")
+                
+                # Note: File watcher will be initialized on first tool call
+                # We can't initialize it here because FileWatcherService requires a Context
+                
+                logger.info("Project initialized from CLI flag: %s (%d files)", 
+                           project_path, context.file_count)
             except Exception as exc:  # pylint: disable=broad-except
                 logger.error("Failed to initialize project from CLI flag: %s", exc)
                 raise RuntimeError(
@@ -124,7 +130,7 @@ async def indexer_lifespan(_server: FastMCP) -> AsyncIterator[CodeIndexerContext
             context.file_watcher_service.stop_monitoring()
 
 # Create the MCP server with lifespan manager
-mcp = FastMCP("CodeIndexer", lifespan=indexer_lifespan, dependencies=["pathlib"])
+mcp = FastMCP("CodeIndexer", lifespan=indexer_lifespan)
 
 # ----- RESOURCES -----
 
@@ -135,7 +141,7 @@ def get_config() -> str:
     ctx = mcp.get_context()
     return ProjectManagementService(ctx).get_project_config()
 
-@mcp.resource("files://{file_path}")
+@mcp.resource("files://{file_path*}")
 @handle_mcp_resource_errors
 def get_file_content(file_path: str) -> str:
     """Get the content of a specific file."""
@@ -220,8 +226,8 @@ def search_code_advanced(
     )
 
 @mcp.tool()
-@handle_mcp_tool_errors(return_type='list')
-def find_files(pattern: str, ctx: Context) -> List[str]:
+@handle_mcp_tool_errors(return_type='str')
+def find_files(pattern: str, ctx: Context) -> str:
     """
     Find files matching a glob pattern using pre-built file index.
 
@@ -236,14 +242,62 @@ def find_files(pattern: str, ctx: Context) -> List[str]:
     - Uses standard glob patterns (*, ?, [])
     - Fast lookup using in-memory file index
     - Uses forward slashes consistently across all platforms
+    - Automatically applies lenient search strategies (recursive, case-insensitive)
 
     Args:
         pattern: Glob pattern to match files (e.g., "*.py", "test_*.js", "README.md")
 
     Returns:
-        List of file paths matching the pattern
+        Formatted string with file list and match quality information
     """
-    return FileDiscoveryService(ctx).find_files(pattern)
+    search_result = FileDiscoveryService(ctx).find_files(pattern)
+    return _format_file_search_result(search_result)
+
+
+def _format_file_search_result(search_result) -> str:
+    """
+    Format FileSearchResult as a user-friendly string.
+    
+    Args:
+        search_result: FileSearchResult from the service layer
+        
+    Returns:
+        Formatted string with match information and file list
+    """
+    files = search_result.files
+    
+    if not files:
+        return f"No files found matching pattern '{search_result.original_pattern}'."
+    
+    # Build the message based on match type
+    message_parts = []
+    
+    if search_result.match_type == "exact":
+        message_parts.append(f"Found {len(files)} file(s) matching '{search_result.original_pattern}':")
+    elif search_result.match_type == "recursive":
+        message_parts.append(
+            f"Exact match for '{search_result.original_pattern}' did not yield any results. "
+            f"But found {len(files)} file(s) through a recursive search (pattern: '{search_result.applied_pattern}'):"
+        )
+    elif search_result.match_type == "case_insensitive_root":
+        message_parts.append(
+            f"Exact match for '{search_result.original_pattern}' did not yield any results. "
+            f"But found {len(files)} file(s) through a case-insensitive search:"
+        )
+    elif search_result.match_type == "case_insensitive_recursive":
+        message_parts.append(
+            f"Exact match for '{search_result.original_pattern}' did not yield any results. "
+            f"But found {len(files)} file(s) through a case-insensitive recursive search (pattern: '{search_result.applied_pattern}'):"
+        )
+    elif search_result.match_type == "all":
+        message_parts.append(f"All {len(files)} files in the project:")
+    else:
+        message_parts.append(f"Found {len(files)} file(s):")
+    
+    # Add file list
+    message_parts.append("\n".join(files))
+    
+    return "\n".join(message_parts)
 
 @mcp.tool()
 @handle_mcp_tool_errors(return_type='dict')
