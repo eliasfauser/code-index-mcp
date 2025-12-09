@@ -164,8 +164,8 @@ def set_project_path(path: str, ctx: Context) -> str:
 @mcp.tool()
 @handle_mcp_tool_errors(return_type='dict')
 def search_code_advanced(
-    pattern: str,
     ctx: Context,
+    pattern: Optional[str] = None,
     case_sensitive: bool = False,
     context_lines: int = 0,
     file_pattern: str = None,
@@ -188,7 +188,7 @@ def search_code_advanced(
     - Auto Regex Detection: Patterns with regex chars like | or [] are treated as regex
 
     Args:
-        pattern: The search pattern with powerful matching options:
+        pattern: The search pattern with powerful matching options (None = search all files with "**"):
                  - Glob patterns: "*permission*" (finds any line with "permission")
                  - Simple text: "permission" (exact substring match)
                  - Regex patterns: "func.*Permission" (when regex=True or auto-detected)
@@ -234,9 +234,11 @@ def search_code_advanced(
           pattern="func.*\(", file_pattern="*.go", regex=True
         - Find error handling:
           pattern="*error*", case_sensitive=False
+        - Search all files in project:
+          pattern=None, file_pattern="*_test.go", 
     """
     return SearchService(ctx).search_code(
-        pattern=pattern,
+        pattern=pattern if pattern is not None else "**",
         case_sensitive=case_sensitive,
         context_lines=context_lines,
         file_pattern=file_pattern,
