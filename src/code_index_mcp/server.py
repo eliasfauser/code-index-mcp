@@ -258,12 +258,24 @@ def find_files(pattern: str, ctx: Context) -> str:
     - Checking if specific files exist in the project
     - Getting file lists for further analysis
 
-    Pattern matching:
+    Pattern matching with intelligent fallbacks:
     - Supports both full path and filename-only matching
     - Uses standard glob patterns (*, ?, [])
     - Fast lookup using in-memory file index
     - Uses forward slashes consistently across all platforms
-    - Automatically applies lenient search strategies (recursive, case-insensitive)
+    
+    Automatic lenient search strategies:
+    1. Simple filename (e.g., "users.go") → Automatically searches recursively (**/users.go)
+    2. Path with wildcard (e.g., "src/*.py") → If no direct matches, searches subdirectories (src/**/*.py)
+    3. Nested paths (e.g., "repos/services/service-one/test/endpoint/*.go") → Automatically becomes recursive
+    4. Case-insensitive fallback if no case-sensitive matches found
+    
+    Examples:
+    - "*.py" → Finds all .py files in root directory
+    - "**/*.py" → Finds all .py files recursively
+    - "users.py" → Automatically finds in any directory
+    - "src/*.py" → Finds .py files in src/ and subdirectories (if no direct matches)
+    - "test/endpoint/*.go" → Finds .go files in test/endpoint/ and its subdirectories
 
     Args:
         pattern: Glob pattern to match files (e.g., "*.py", "test_*.js", "README.md")

@@ -365,3 +365,113 @@ class TestFileDiscoveryServiceIntegration:
         direct_lib_files = [f for f in results if f.startswith("lib/") and f.count("/") == 1]
         # lib has no direct .py files, only in lib/utils/
         assert len(direct_lib_files) == 0
+
+
+class TestFileDiscoveryServiceLenientPathPatterns:
+    """Test lenient search for patterns with paths ending in wildcards."""
+    
+    def test_path_with_wildcard_becomes_recursive(self, service):
+        """Test that 'path/*.py' automatically becomes 'path/**/*.py' if no matches."""
+        result = service.find_files("lib/*.py")
+        
+        results = result.files
+        
+        # Since lib/ has no direct .py files, lenient search should find lib/utils/*.py
+        assert len(results) > 0, "Should find files in subdirectories with lenient search"
+        assert any("lib/utils/helper.py" in f or "lib\\utils\\helper.py" in f for f in results)
+        assert any("lib/utils/validator.py" in f or "lib\\utils\\validator.py" in f for f in results)
+        assert result.match_type == "recursive"
+    
+    def test_nested_path_with_wildcard(self, service):
+        """Test 'src/controllers/*.py' finds files in subdirectories."""
+        result = service.find_files("src/controllers/*.py")
+        
+        results = result.files
+        
+        # Should find src/controllers/user_controller.py and admin_controller.py
+        assert len(results) >= 2, "Should find controller files"
+        assert any("user_controller.py" in f for f in results)
+        assert any("admin_controller.py" in f for f in results)
+    
+    def test_deep_nested_path_with_wildcard(self, service):
+        """Test deeply nested path with wildcard."""
+        result = service.find_files("tests/integration/*.py")
+        
+        results = result.files
+        
+        # Should find tests/integration/test_api.py
+        assert len(results) >= 1, "Should find test files in integration directory"
+        assert any("test_api.py" in f for f in results)
+    
+    def test_path_with_glob_extension(self, service):
+        """Test 'src/models/*.py' pattern."""
+        result = service.find_files("src/models/*.py")
+        
+        results = result.files
+        
+        # Should find src/models/user.py and admin.py
+        assert len(results) >= 2
+        assert any("user.py" in f for f in results)
+        assert any("admin.py" in f for f in results)
+    
+    def test_nonexistent_path_with_wildcard(self, service):
+        """Test that nonexistent path returns empty even with lenient search."""
+        result = service.find_files("nonexistent/path/*.py")
+        
+        results = result.files
+        
+        # Should return empty since path doesn't exist
+        assert len(results) == 0
+        assert result.match_type == "no_match"
+    
+    def test_real_world_go_repo_pattern(self, mock_ctx, temp_project):
+        """Test real-world pattern like 'repos/services/service-one/test/endpoint/*.go'."""
+        # Create a realistic Go repository structure
+        go_files = [
+            "repos/services/service-one/test/endpoint/user_test.go",
+            "repos/services/service-one/test/endpoint/auth_test.go",
+            "repos/services/service-one/test/endpoint/api/v1/handler_test.go",
+            "repos/services/service-one/test/endpoint/api/v2/handler_test.go",
+        ]
+        
+        for file_path in go_files:
+            full_path = Path(temp_project) / file_path
+            full_path.parent.mkdir(parents=True, exist_ok=True)
+            full_path.write_text(f"package endpoint\n// Test file: {file_path}\n")
+        
+        # Rebuild index with new files
+        mock_ctx.shallow_index_manager.build_index()
+        mock_ctx.shallow_index_manager.load_index()
+        
+        # Patch global manager and create service with updated index
+        from code_index_mcp.indexing import shallow_index_manager
+        original_manager = shallow_index_manager._shallow_manager
+        shallow_index_manager._shallow_manager = mock_ctx.shallow_index_manager
+        try:
+            service = FileDiscoveryService(mock_ctx)
+        finally:
+            shallow_index_manager._shallow_manager = original_manager
+        
+        # Debug: Check what files are in the index
+        all_files = mock_ctx.shallow_index_manager.get_file_list()
+        go_files_in_index = [f for f in all_files if f.endswith('.go')]
+        
+        # Ensure the new files are actually in the index
+        assert len(go_files_in_index) >= 4, f"Index should contain .go files, got: {go_files_in_index}"
+        
+        # Test the pattern that should find files in subdirectories
+        result = service.find_files("repos/services/service-one/test/endpoint/*.go")
+        
+        results = result.files
+        
+        # Should find all .go files under endpoint/ including subdirectories
+        assert len(results) >= 2, f"Should find .go files under endpoint/, got {len(results)}: {results}\nAll .go files: {go_files_in_index}"
+        assert any("user_test.go" in f for f in results), "Should find user_test.go"
+        assert any("auth_test.go" in f for f in results), "Should find auth_test.go"
+        
+        # With lenient search, should also find files in subdirectories
+        if len(results) >= 4:
+            assert any("handler_test.go" in f for f in results), "Lenient search should find files in subdirectories"
+        
+        # Verify match type is recursive (lenient search applied)
+        assert result.match_type == "recursive", f"Expected recursive match, got {result.match_type}"

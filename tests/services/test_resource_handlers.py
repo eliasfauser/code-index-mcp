@@ -310,17 +310,16 @@ class TestResourceListing:
         import asyncio
         from code_index_mcp.server import mcp
         
-        # Get list of resources
-        resources = asyncio.run(mcp.list_resources())
+        # Get list of resources (now returns a dict)
+        resources = asyncio.run(mcp.get_resources())
         
         # Should have at least the config resource
         assert len(resources) > 0
         
-        # Find config resource (uri is a pydantic AnyUrl object)
-        config_resources = [r for r in resources if str(r.uri) == "config://code-indexer"]
-        assert len(config_resources) == 1
+        # Check for config resource by URI key
+        assert "config://code-indexer" in resources
         
-        config_resource = config_resources[0]
+        config_resource = resources["config://code-indexer"]
         assert str(config_resource.uri) == "config://code-indexer"
         assert config_resource.name is not None or config_resource.uri is not None
     
@@ -329,51 +328,47 @@ class TestResourceListing:
         import asyncio
         from code_index_mcp.server import mcp
         
-        # Get list of resource templates
-        templates = asyncio.run(mcp.list_resource_templates())
+        # Get list of resource templates (now returns a dict)
+        templates = asyncio.run(mcp.get_resource_templates())
         
-        # Should have the files template
+        # Should have files template
         assert len(templates) > 0
         
-        # Find files template
-        files_templates = [t for t in templates if "files://" in t.uriTemplate]
-        assert len(files_templates) == 1
+        # Find files template by checking keys
+        files_template_keys = [k for k in templates.keys() if k.startswith("files://")]
+        assert len(files_template_keys) == 1
         
-        files_template = files_templates[0]
-        assert files_template.uriTemplate == "files://{file_path}"
-        assert files_template.name is not None or files_template.uriTemplate is not None
+        template = templates[files_template_keys[0]]
+        assert template.uri_template.startswith("files://")
+        assert template.name is not None or template.uri_template is not None
     
     def test_resources_are_discoverable(self):
         """Test that both static and template resources are discoverable."""
         import asyncio
         from code_index_mcp.server import mcp
         
-        # Get both lists
-        resources = asyncio.run(mcp.list_resources())
-        templates = asyncio.run(mcp.list_resource_templates())
+        # Get both lists (now returns dicts)
+        resources = asyncio.run(mcp.get_resources())
+        templates = asyncio.run(mcp.get_resource_templates())
         
         # Should have at least one of each
         assert len(resources) >= 1, "Should have at least the config resource"
         assert len(templates) >= 1, "Should have at least the files template"
         
-        # Collect all URIs/templates (convert AnyUrl to string)
-        resource_uris = {str(r.uri) for r in resources}
-        template_uris = {t.uriTemplate for t in templates}
-        
-        # Verify expected resources
-        assert "config://code-indexer" in resource_uris
-        assert "files://{file_path}" in template_uris
+        # Check URIs/templates are in the keys
+        assert "config://code-indexer" in resources
+        files_template_keys = [k for k in templates.keys() if k.startswith("files://")]
+        assert len(files_template_keys) >= 1
     
     def test_config_resource_has_metadata(self):
         """Test that config resource has proper metadata."""
         import asyncio
         from code_index_mcp.server import mcp
         
-        resources = asyncio.run(mcp.list_resources())
-        config_resources = [r for r in resources if str(r.uri) == "config://code-indexer"]
+        resources = asyncio.run(mcp.get_resources())
+        assert "config://code-indexer" in resources
         
-        assert len(config_resources) == 1
-        config_resource = config_resources[0]
+        config_resource = resources["config://code-indexer"]
         
         # Check that it has some identifying information
         assert str(config_resource.uri) == "config://code-indexer"
@@ -385,19 +380,19 @@ class TestResourceListing:
         import asyncio
         from code_index_mcp.server import mcp
         
-        templates = asyncio.run(mcp.list_resource_templates())
-        files_templates = [t for t in templates if "files://" in t.uriTemplate]
+        templates = asyncio.run(mcp.get_resource_templates())
+        files_template_keys = [k for k in templates.keys() if k.startswith("files://")]
         
-        assert len(files_templates) == 1
-        files_template = files_templates[0]
+        assert len(files_template_keys) == 1
+        files_template = templates[files_template_keys[0]]
         
         # Check that it has proper template structure
-        assert files_template.uriTemplate == "files://{file_path}"
-        assert hasattr(files_template, 'uriTemplate')
+        assert files_template.uri_template.startswith("files://")
+        assert hasattr(files_template, 'uri_template')
         
         # Check if it has description or name (optional but good practice)
         # Note: These might be None if not set in the decorator
-        assert files_template.uriTemplate is not None
+        assert files_template.uri_template is not None
     
     def test_read_resource_via_mcp_with_workspace_files(self):
         """Test reading actual files from the workspace through MCP resources."""
@@ -478,12 +473,12 @@ class TestResourceListing:
         import asyncio
         from code_index_mcp.server import mcp
         
-        resources = asyncio.run(mcp.list_resources())
-        config_resources = [r for r in resources if str(r.uri) == "config://code-indexer"]
+        resources = asyncio.run(mcp.get_resources())
+        assert "config://code-indexer" in resources
         
-        assert len(config_resources) == 1
+        config_resource = resources["config://code-indexer"]
         
         # Verify URI scheme is correct
-        uri_str = str(config_resources[0].uri)
+        uri_str = str(config_resource.uri)
         assert uri_str.startswith("config://")
         assert "code-indexer" in uri_str

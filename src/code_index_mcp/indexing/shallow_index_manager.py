@@ -154,6 +154,31 @@ class ShallowIndexManager:
             regex = self._compile_glob_regex(norm)
             results = [f for f in files if regex.match(f) is not None]
             
+            # Check if this is a path pattern ending with /*.ext that might benefit from recursive search
+            # Even if we found direct matches, check for subdirectory matches too
+            has_path_wildcard = '/' in norm and not '**' in norm
+            if has_path_wildcard:
+                parts = norm.rsplit('/', 1)
+                if len(parts) == 2 and parts[1].startswith('*'):
+                    # Also try recursive pattern to catch files in subdirectories
+                    lenient_pattern = parts[0] + '/**/' + parts[1]
+                    lenient_regex = self._compile_glob_regex(lenient_pattern)
+                    recursive_results = [f for f in files if lenient_regex.match(f) is not None]
+                    
+                    # Combine direct and recursive results
+                    combined = list(dict.fromkeys(results + recursive_results))
+                    
+                    if combined:
+                        match_type = "recursive" if recursive_results else "exact"
+                        pattern_desc = f"{norm} + {lenient_pattern}" if recursive_results else norm
+                        return FileSearchResult(
+                            files=combined,
+                            match_type=match_type,
+                            original_pattern=original_pattern,
+                            applied_pattern=pattern_desc
+                        )
+            
+            # Return exact matches if found (and not handled above)
             if results:
                 return FileSearchResult(
                     files=results,
@@ -164,7 +189,10 @@ class ShallowIndexManager:
             
             # Lenient search strategy:
             # 1. If no results and pattern has no path separators, try recursive search
-            # 2. If still no results, try case-insensitive search (both original and recursive)
+            # 2. If pattern ends with /*.ext, try /**/*.ext (recursive in subdirectories)
+            # 3. If still no results, try case-insensitive variations
+            
+            # Strategy 1: Simple filename without path - add **/ prefix
             if '/' not in norm and not norm.startswith('**/'):
                 # Try adding **/ prefix to search recursively in all directories
                 lenient_pattern = '**/' + norm
@@ -178,20 +206,52 @@ class ShallowIndexManager:
                         original_pattern=original_pattern,
                         applied_pattern=lenient_pattern
                     )
-                
-                # Try original pattern case-insensitive (for root files)
-                regex_ci = self._compile_glob_regex(norm, case_insensitive=True)
-                results = [f for f in files if regex_ci.match(f) is not None]
-                
-                if results:
-                    return FileSearchResult(
-                        files=results,
-                        match_type="case_insensitive_root",
-                        original_pattern=original_pattern,
-                        applied_pattern=f"{norm} (case-insensitive)"
-                    )
-                
-                # Try recursive pattern case-insensitive
+            
+            # Strategy 2: Pattern with path ending in /*.ext - try /**/*.ext AND also keep original
+            # Example: "test/endpoint/*.go" 
+            # Should match both:
+            #   - test/endpoint/user_test.go (original pattern)
+            #   - test/endpoint/api/v1/handler_test.go (recursive pattern)
+            if '/' in norm and not '**' in norm:
+                # Check if pattern ends with /*. pattern (like /*.go or /*.py)
+                parts = norm.rsplit('/', 1)
+                if len(parts) == 2 and parts[1].startswith('*'):
+                    # Convert path/*.ext to path/**/*.ext for recursive search
+                    lenient_pattern = parts[0] + '/**/' + parts[1]
+                    lenient_regex = self._compile_glob_regex(lenient_pattern)
+                    
+                    # Match BOTH original pattern (direct files) AND recursive pattern (subdirectories)
+                    # Re-check original pattern since results was empty
+                    original_regex = self._compile_glob_regex(norm)
+                    direct_results = [f for f in files if original_regex.match(f) is not None]
+                    recursive_results = [f for f in files if lenient_regex.match(f) is not None]
+                    
+                    # Combine and deduplicate
+                    combined = list(dict.fromkeys(direct_results + recursive_results))
+                    
+                    if combined:
+                        return FileSearchResult(
+                            files=combined,
+                            match_type="recursive",
+                            original_pattern=original_pattern,
+                            applied_pattern=f"{norm} + {lenient_pattern}"
+                        )
+            
+            # Strategy 3: Case-insensitive search with original pattern
+            regex_ci = self._compile_glob_regex(norm, case_insensitive=True)
+            results = [f for f in files if regex_ci.match(f) is not None]
+            
+            if results:
+                return FileSearchResult(
+                    files=results,
+                    match_type="case_insensitive_root",
+                    original_pattern=original_pattern,
+                    applied_pattern=f"{norm} (case-insensitive)"
+                )
+            
+            # Strategy 4: If we tried adding **/ for simple filenames, try it case-insensitive
+            if '/' not in original_pattern.replace('\\', '/').strip():
+                lenient_pattern = '**/' + norm
                 lenient_regex_ci = self._compile_glob_regex(lenient_pattern, case_insensitive=True)
                 results = [f for f in files if lenient_regex_ci.match(f) is not None]
                 
@@ -202,6 +262,22 @@ class ShallowIndexManager:
                         original_pattern=original_pattern,
                         applied_pattern=f"{lenient_pattern} (case-insensitive)"
                     )
+            
+            # Strategy 5: For path patterns ending in /*.ext, try case-insensitive recursive
+            if '/' in norm and not '**' in norm:
+                parts = norm.rsplit('/', 1)
+                if len(parts) == 2 and parts[1].startswith('*'):
+                    lenient_pattern = parts[0] + '/**/' + parts[1]
+                    lenient_regex_ci = self._compile_glob_regex(lenient_pattern, case_insensitive=True)
+                    results = [f for f in files if lenient_regex_ci.match(f) is not None]
+                    
+                    if results:
+                        return FileSearchResult(
+                            files=results,
+                            match_type="case_insensitive_recursive",
+                            original_pattern=original_pattern,
+                            applied_pattern=f"{lenient_pattern} (case-insensitive)"
+                        )
             
             # No matches found with any strategy
             return FileSearchResult(
