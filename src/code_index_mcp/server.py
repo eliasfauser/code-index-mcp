@@ -164,15 +164,15 @@ def set_project_path(path: str, ctx: Context) -> str:
 @mcp.tool()
 @handle_mcp_tool_errors(return_type='dict')
 def search_code_advanced(
-    ctx: Context,
-    pattern: Optional[str] = None,
+    pattern: str = "**",
     case_sensitive: bool = False,
     context_lines: int = 0,
     file_pattern: str = None,
     fuzzy: bool = False,
     regex: bool = None,
     start_index: int = 0,
-        max_results: Optional[int] = 10
+    max_results: Optional[int] = 10,
+    ctx: Context = None
 ) -> Dict[str, Any]:
     """
     Search for a code pattern in the project using an advanced, fast tool with pagination support.
@@ -238,7 +238,7 @@ def search_code_advanced(
           pattern=None, file_pattern="*_test.go", 
     """
     return SearchService(ctx).search_code(
-        pattern=pattern if pattern is not None else "**",
+        pattern=pattern,
         case_sensitive=case_sensitive,
         context_lines=context_lines,
         file_pattern=file_pattern,
